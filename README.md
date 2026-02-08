@@ -38,7 +38,7 @@ rails new myapp -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/
   - `Rails/StrictRestfulRoutes` - Only 7 RESTful actions, no custom routes
   - `Rails/NoMetaprogramming` - No `define_method`, `send`, etc.
   - `Rails/TurboBroadcasts` - Enforces async broadcasts, no `local: true`
-- **Claude Code hooks** - TDD enforcement, auto-test, auto-lint on every edit
+- **Claude Code hooks** - TDD enforcement, auto-test, auto-lint on every edit (see [Hooks](#claude-code-hooks))
 - **Git pre-commit hook** - RuboCop + related tests on staged files
 
 ### Testing
@@ -89,6 +89,35 @@ This prefix appears in:
 - **`.github/BWS_SECRETS.md`** - documents every secret your CI/CD needs
 
 See [templates/.github/BWS_SECRETS.md.tt](templates/.github/BWS_SECRETS.md.tt) for the full list of required secrets and which workflows use them.
+
+## Claude Code Hooks
+
+The template configures Claude Code with hooks that run automatically before and after file edits. These enforce code quality without manual intervention.
+
+### PreToolUse (before Claude writes code)
+
+| Hook | Trigger | What it does |
+|---|---|---|
+| `rails_test_guide.sh` | Write/Edit | Checks that a test file exists before implementing code (TDD enforcement) |
+| `no_skip_tests.sh` | `git commit` | Blocks commits that use `--no-verify` |
+
+### PostToolUse (after Claude writes code)
+
+| Hook | Trigger | What it does |
+|---|---|---|
+| `test_posttooluse.sh` | Write/Edit | Runs related tests for the edited file |
+| `tdd_check.sh` | Write/Edit | Validates TDD workflow (test written before implementation) |
+| `controller_response_check.sh` | Write/Edit | Checks controllers only use HTML/Turbo Stream responses, no JSON |
+| `broadcast_test_guide.sh` | Write/Edit | Checks Turbo broadcasts use `_later` async variants |
+| `rubocop_test.sh` | Write/Edit | Runs RuboCop on the edited file |
+| `log_hook.sh` | All | Logs hook executions to `.claude/hook_execution.log` |
+
+### Permissions
+
+The `settings.json` also configures allowed and denied commands:
+
+- **Allowed**: Rails, RuboCop, git, bundle, common shell commands, GitHub CLI
+- **Denied**: `--no-verify`, `git push --force`, modifications to `.git/hooks/`
 
 ## Post-Generation Setup
 
