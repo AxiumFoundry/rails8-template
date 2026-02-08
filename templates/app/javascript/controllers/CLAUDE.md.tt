@@ -1,0 +1,21 @@
+# Stimulus Controllers
+
+## What Exists
+
+### UI & Navigation
+- `dropdown_controller` - dropdown menu with click-outside handling
+- `modal_controller` - modal open/close
+- `flash_controller` - auto-closing flash messages with hover pause
+
+## Conventions
+
+- Always clean up in `disconnect()` - remove event listeners, cancel timers, disconnect observers
+- Use Turbo for navigation and form submissions; Stimulus for behavior that Turbo can't handle
+- Use `data-action` attributes to bind events, not `addEventListener` in `connect()`
+- Targets over DOM queries (`this.elementTarget` not `this.element.querySelector`)
+- Keep controllers focused on one behavior
+
+## Related
+
+- [app/views/CLAUDE.md](../views/CLAUDE.md)
+- [app/controllers/CLAUDE.md](../../controllers/CLAUDE.md)

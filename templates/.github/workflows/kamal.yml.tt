@@ -1,0 +1,107 @@
+name: Kamal Command
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Kamal command to run (without 'kamal' prefix)"
+        required: true
+        default: "app details"
+        type: string
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  command:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set environment variables
+        run: |
+          if [[ "${{ inputs.environment }}" == "production" ]]; then
+            echo "DEPLOY_CONFIG=config/deploy.yml" >> $GITHUB_ENV
+            echo "KAMAL_DESTINATION=" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_CONFIG=config/deploy.staging.yml" >> $GITHUB_ENV
+            echo "KAMAL_DESTINATION=-d staging" >> $GITHUB_ENV
+          fi
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: bws_secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+
+          SSH_KEY=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "SSH_PRIVATE_KEY_HETZNER") | .value')
+          if [ -z "$SSH_KEY" ]; then
+            echo "::error::SSH_PRIVATE_KEY_HETZNER not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$SSH_KEY"
+          echo "private_key<<EOF_SSH_KEY" >> $GITHUB_OUTPUT
+          echo "$SSH_KEY" >> $GITHUB_OUTPUT
+          echo "EOF_SSH_KEY" >> $GITHUB_OUTPUT
+
+          REGISTRY_PASSWORD=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "KAMAL_REGISTRY_PASSWORD") | .value')
+          if [ -z "$REGISTRY_PASSWORD" ]; then
+            echo "::error::KAMAL_REGISTRY_PASSWORD not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$REGISTRY_PASSWORD"
+          echo "registry_password=$REGISTRY_PASSWORD" >> $GITHUB_OUTPUT
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ steps.bws_secrets.outputs.private_key }}
+
+      - name: Read server IP from deploy config
+        id: deploy_ip
+        run: |
+          IP=$(grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' ${{ env.DEPLOY_CONFIG }} | head -n 1 || true)
+          if [ -z "$IP" ]; then
+            echo "::error::Failed to extract server IP from ${{ env.DEPLOY_CONFIG }}."
+            exit 1
+          fi
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known hosts
+        run: |
+          IP="${{ steps.deploy_ip.outputs.ip }}"
+          if [ -z "$IP" ]; then
+            echo "::error::Server IP is empty; cannot add to known_hosts."
+            exit 1
+          fi
+          if ! ssh-keyscan -T 10 "$IP" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "::error::Failed to fetch SSH host key for $IP."
+            exit 1
+          fi
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: .ruby-version
+
+      - name: Install Kamal
+        run: gem install kamal --no-document
+
+      - name: Run Kamal command
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+          KAMAL_REGISTRY_PASSWORD: ${{ steps.bws_secrets.outputs.registry_password }}
+        run: |
+          echo "Running: kamal ${{ inputs.command }} ${{ env.KAMAL_DESTINATION }}"
+          kamal ${{ inputs.command }} ${{ env.KAMAL_DESTINATION }}

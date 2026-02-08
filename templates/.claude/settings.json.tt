@@ -1,0 +1,111 @@
+{
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/rails_test_guide.sh",
+                        "timeout": 10
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash(git commit*)",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/no_skip_tests.sh",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/test_posttooluse.sh",
+                        "timeout": 30
+                    },
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/tdd_check.sh",
+                        "timeout": 30
+                    },
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/controller_response_check.sh",
+                        "timeout": 30
+                    },
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/broadcast_test_guide.sh",
+                        "timeout": 30
+                    },
+                    {
+                        "type": "command",
+                        "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/rubocop_test.sh",
+                        "timeout": 120
+                    }
+                ]
+            }
+        ]
+    },
+    "permissions": {
+        "allow": [
+            "Bash(rails:*)",
+            "Bash(find:*)",
+            "Bash(rm:*)",
+            "Bash(mkdir:*)",
+            "Bash(rubocop:*)",
+            "Bash(bundle exec rails test:*)",
+            "Bash(bundle exec rails generate migration:*)",
+            "Bash(bundle exec rails:*)",
+            "Bash(bundle exec rubocop:*)",
+            "Bash(grep:*)",
+            "Bash(mv:*)",
+            "Bash(ls:*)",
+            "Bash(ruby:*)",
+            "Bash(touch:*)",
+            "Bash(rg:*)",
+            "Bash(bin/rails test:*)",
+            "Bash(bin/rails:*)",
+            "Bash(bin/rubocop:*)",
+            "Bash(rails db:migrate)",
+            "Bash(bundle:*)",
+            "Bash(git commit:*)",
+            "Bash(git add:*)",
+            "Bash(git push:*)",
+            "Bash(git log:*)",
+            "Bash(git fetch:*)",
+            "Bash(git merge:*)",
+            "Bash(git pull:*)",
+            "Bash(gh pr view:*)",
+            "Bash(gh pr list:*)",
+            "Bash(gh pr close:*)",
+            "Bash(source /tmp/bws-env.sh:*)",
+            "Bash(chmod:*)",
+            "Bash(echo:*)",
+            "Bash(cat:*)",
+            "Bash(env:*)",
+            "Bash(test:*)",
+            "Bash(time bin/rails test:*)",
+            "WebFetch(domain:github.com)",
+            "WebFetch(domain:turbo.hotwired.dev)",
+            "WebFetch(domain:rubydoc.info)",
+            "WebFetch(domain:docs.anthropic.com)"
+        ],
+        "deny": [
+            "Bash(:*--no-verify:*)",
+            "Bash(git push:*--force:*)",
+            "Bash(git push:*-f :*)",
+            "Bash(:*/.git/hooks/:*)",
+            "Bash(rm:*/.git/hooks/:*)",
+            "Bash(chmod:*/.git/hooks/:*)"
+        ]
+    }
+}

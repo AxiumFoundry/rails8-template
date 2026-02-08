@@ -1,0 +1,95 @@
+inherit_gem: { rubocop-rails-omakase: rubocop.yml }
+
+require:
+  - .rubocop/cop/no_comments
+  - .rubocop/cop/rails/skinny_controller
+  - .rubocop/cop/rails/strict_restful_routes
+  - .rubocop/cop/rails/no_metaprogramming
+  - .rubocop/cop/rails/turbo_broadcasts
+
+AllCops:
+  Exclude:
+    - 'db/schema.rb'
+    - 'vendor/**/*'
+    - 'tmp/**/*'
+
+Custom/NoComments:
+  Enabled: true
+  Exclude:
+    - 'Gemfile'
+    - 'config/**/*'
+    - 'db/**/*'
+
+Metrics/MethodLength:
+  Max: 5
+  Exclude:
+    - 'app/models/**/*'
+    - 'app/services/**/*'
+    - 'test/**/*'
+    - 'spec/**/*'
+    - 'db/**/*'
+    - 'config/**/*'
+    - 'lib/**/*'
+
+Metrics/ClassLength:
+  Max: 100
+  Include:
+    - 'app/controllers/**/*.rb'
+
+Metrics/AbcSize:
+  Max: 10
+  Include:
+    - 'app/controllers/**/*.rb'
+  Exclude:
+    - 'app/models/**/*'
+    - 'app/services/**/*'
+    - 'test/**/*'
+    - 'spec/**/*'
+    - 'db/**/*'
+    - 'config/**/*'
+    - 'lib/**/*'
+
+Metrics/CyclomaticComplexity:
+  Max: 3
+  Include:
+    - 'app/controllers/**/*.rb'
+  Exclude:
+    - 'app/models/**/*'
+    - 'app/services/**/*'
+    - 'test/**/*'
+    - 'spec/**/*'
+    - 'db/**/*'
+    - 'config/**/*'
+    - 'lib/**/*'
+
+Rails/SkinnyController:
+  Enabled: true
+  Include:
+    - 'app/controllers/**/*.rb'
+
+Rails/StrictRestfulRoutes:
+  Enabled: true
+  Include:
+    - 'app/controllers/**/*.rb'
+    - 'config/routes.rb'
+
+Rails/NoMetaprogramming:
+  Enabled: true
+  Include:
+    - 'app/**/*.rb'
+
+Rails/TurboBroadcasts:
+  Enabled: true
+  Include:
+    - 'app/models/**/*.rb'
+    - 'app/views/**/*.erb'
+
+Rails/ActionFilter:
+  Enabled: true
+  EnforcedStyle: action
+
+Rails/ApplicationController:
+  Enabled: true
+
+Rails/ActionControllerFlashBeforeRender:
+  Enabled: true

@@ -1,0 +1,68 @@
+require "test_helper"
+
+class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
+  Capybara.default_max_wait_time = 15
+  Capybara.automatic_reload = true
+  Capybara.enable_aria_label = true
+  Capybara.automatic_label_click = true
+  Capybara.server_errors = [ StandardError ]
+
+  self.use_transactional_tests = false
+
+  if ENV["SELENIUM_HOST"].present?
+    parallelize(workers: 1)
+  end
+
+  parallelize_setup do |worker|
+    port = 9000 + worker
+    Capybara.server_port = port
+    Capybara.app_host = "http://127.0.0.1:#{port}"
+  end
+
+  setup do
+    ActiveRecord::Base.connection.tables.each do |table|
+      next if table == "schema_migrations" || table == "ar_internal_metadata"
+      ActiveRecord::Base.connection.execute("TRUNCATE #{table} CASCADE")
+    end
+
+    WebMock.disable_net_connect!(
+      allow_localhost: true,
+      allow: [ "selenium", "chrome", "chromium", "chromedriver.storage.googleapis.com" ]
+    )
+
+    if ENV["SELENIUM_HOST"].present?
+      Capybara.server_host = "0.0.0.0"
+      Capybara.app_host = "http://#{IPSocket.getaddress(Socket.gethostname)}:#{Capybara.server_port}"
+    end
+  end
+
+  teardown do
+    Capybara.reset_sessions!
+    Capybara.use_default_driver
+  end
+
+  if ENV["SELENIUM_HOST"].present?
+    Capybara.register_driver :remote_chrome do |app|
+      options = Selenium::WebDriver::Chrome::Options.new
+      options.add_argument("--headless=new")
+      options.add_argument("--no-sandbox")
+      options.add_argument("--disable-dev-shm-usage")
+      options.add_argument("--disable-gpu")
+      options.add_argument("--window-size=1400,1400")
+
+      Capybara::Selenium::Driver.new(
+        app,
+        browser: :remote,
+        url: "http://#{ENV['SELENIUM_HOST']}:4444",
+        capabilities: options
+      )
+    end
+
+    driven_by :remote_chrome, screen_size: [ 1400, 1400 ]
+  else
+    driven_by :selenium, using: :headless_chrome, screen_size: [ 1400, 1400 ]
+  end
+
+  include Devise::Test::IntegrationHelpers
+  include FactoryBot::Syntax::Methods
+end

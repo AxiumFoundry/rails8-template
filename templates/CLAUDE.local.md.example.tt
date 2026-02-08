@@ -1,0 +1,14 @@
+# CLAUDE.local.md (personal preferences - gitignored)
+
+# Copy this file to CLAUDE.local.md and customize.
+
+# Example preferences:
+
+# When running commands from outside the devcontainer, use:
+# docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "<command>"
+
+# I prefer to run tests for just the file I'm working on, not the full suite.
+# I like verbose test output: bin/rails test -v
+
+# When I say "fix rubocop" I mean auto-correct: bundle exec rubocop -a
+# When I say "check" I mean run both tests and rubocop.

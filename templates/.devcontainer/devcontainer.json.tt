@@ -1,0 +1,36 @@
+{
+  "name": "<%= app_name %>",
+  "dockerComposeFile": "compose.yaml",
+  "service": "rails-app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false },
+    "ghcr.io/rails/devcontainer/features/postgres-client": {}
+  },
+  "containerEnv": {
+    "CAPYBARA_SERVER_PORT": "45678",
+    "BWS_ACCESS_TOKEN": "${localEnv:BWS_ACCESS_TOKEN}",
+    "HONEYBADGER_PERSONAL_AUTH_TOKEN": "${localEnv:HONEYBADGER_PERSONAL_AUTH_TOKEN}",
+    "SELENIUM_HOST": "selenium",
+    "DB_HOST": "postgres"
+  },
+  "forwardPorts": [3000, 5432],
+  "mounts": [
+    "type=bind,source=/run/host-services/ssh-auth.sock,target=/ssh-agent"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Shopify.ruby-lsp",
+        "bradlc.vscode-tailwindcss",
+        "GitHub.copilot-chat",
+        "Anthropic.claude-code",
+        "GitHub.vscode-pull-request-github",
+        "ms-azuretools.vscode-docker",
+        "ms-azuretools.vscode-containers"
+      ]
+    }
+  },
+  "postCreateCommand": ".devcontainer/setup-bws-env.sh && bin/setup --skip-server"
+}

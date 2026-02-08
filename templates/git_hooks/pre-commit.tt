@@ -1,0 +1,46 @@
+#!/bin/bash
+
+STAGED_RB_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rb$')
+
+if [ -z "$STAGED_RB_FILES" ]; then
+  exit 0
+fi
+
+run_cmd() {
+  if [ -n "$DEVCONTAINER" ] || [ -f /.dockerenv ]; then
+    "$@"
+  elif command -v docker >/dev/null 2>&1; then
+    docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "$*"
+  else
+    "$@"
+  fi
+}
+
+echo "Running RuboCop on staged files..."
+if ! run_cmd bundle exec rubocop $STAGED_RB_FILES; then
+  echo "RuboCop failed. Fix the issues above before committing."
+  exit 1
+fi
+
+TEST_FILES=""
+for file in $STAGED_RB_FILES; do
+  if [[ "$file" == *"_test.rb" ]]; then
+    TEST_FILES="$TEST_FILES $file"
+  else
+    test_file=$(echo "$file" | sed 's|^app/|test/|' | sed 's|\.rb$|_test.rb|')
+    if [ -f "$test_file" ]; then
+      TEST_FILES="$TEST_FILES $test_file"
+    fi
+  fi
+done
+
+if [ -n "$TEST_FILES" ]; then
+  echo "Running related tests..."
+  if ! run_cmd bin/rails test $TEST_FILES; then
+    echo "Tests failed. Fix the issues above before committing."
+    exit 1
+  fi
+fi
+
+echo "Pre-commit checks passed."
+exit 0

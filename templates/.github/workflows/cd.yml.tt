@@ -1,0 +1,305 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [ main, develop ]
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+
+    env:
+      DOCKER_BUILDKIT: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: bws_secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+          BWS_PREFIX=$(echo "${{ github.event.repository.name }}" | sed 's/-core$//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+
+          DOCKER_USER=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "DOCKER_REGISTRY_USER") | .value')
+          if [ -z "$DOCKER_USER" ]; then
+            echo "::error::DOCKER_REGISTRY_USER not found in BWS"
+            exit 1
+          fi
+          echo "DOCKER_REGISTRY_USER=$DOCKER_USER" >> $GITHUB_ENV
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '-' '_')
+          echo "DOCKER_IMAGE_NAME=$REPO_NAME" >> $GITHUB_ENV
+          echo "DOCKER_IMAGE=$DOCKER_USER/$REPO_NAME" >> $GITHUB_ENV
+
+          REGISTRY_PASSWORD=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "KAMAL_REGISTRY_PASSWORD") | .value')
+          if [ -z "$REGISTRY_PASSWORD" ]; then
+            echo "::error::KAMAL_REGISTRY_PASSWORD not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$REGISTRY_PASSWORD"
+          echo "registry_password=$REGISTRY_PASSWORD" >> $GITHUB_OUTPUT
+
+          BREVO_SMTP_USERNAME=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "BREVO_SMTP_USERNAME") | .value')
+          if [ -z "$BREVO_SMTP_USERNAME" ]; then
+            echo "::error::BREVO_SMTP_USERNAME not found in BWS"
+            exit 1
+          fi
+          echo "brevo_smtp_username=$BREVO_SMTP_USERNAME" >> $GITHUB_OUTPUT
+
+          DEPLOY_NOTIFICATION_EMAIL=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "DEPLOY_NOTIFICATION_EMAIL") | .value')
+          if [ -z "$DEPLOY_NOTIFICATION_EMAIL" ]; then
+            echo "::error::DEPLOY_NOTIFICATION_EMAIL not found in BWS"
+            exit 1
+          fi
+          echo "deploy_notification_email=$DEPLOY_NOTIFICATION_EMAIL" >> $GITHUB_OUTPUT
+
+          BREVO_SMTP_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_BREVO_SMTP_KEY\") | .value")
+          if [ -z "$BREVO_SMTP_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_BREVO_SMTP_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$BREVO_SMTP_KEY"
+          echo "brevo_smtp_key=$BREVO_SMTP_KEY" >> $GITHUB_OUTPUT
+
+          SSH_KEY=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "SSH_PRIVATE_KEY_HETZNER") | .value')
+          if [ -z "$SSH_KEY" ]; then
+            echo "::error::SSH_PRIVATE_KEY_HETZNER not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$SSH_KEY"
+          echo "private_key<<EOF_SSH_KEY" >> $GITHUB_OUTPUT
+          echo "$SSH_KEY" >> $GITHUB_OUTPUT
+          echo "EOF_SSH_KEY" >> $GITHUB_OUTPUT
+
+      - name: Set environment variables
+        run: |
+          if [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            echo "DEPLOY_ENV=production" >> $GITHUB_ENV
+            echo "KAMAL_DESTINATION=" >> $GITHUB_ENV
+            echo "DEPLOY_CONFIG=config/deploy.yml" >> $GITHUB_ENV
+            echo "IMAGE_TAG=${{ env.DOCKER_IMAGE }}:${{ github.event.workflow_run.head_sha }}" >> $GITHUB_ENV
+            echo "RAILS_ENV=production" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_ENV=staging" >> $GITHUB_ENV
+            echo "KAMAL_DESTINATION=-d staging" >> $GITHUB_ENV
+            echo "DEPLOY_CONFIG=config/deploy.staging.yml" >> $GITHUB_ENV
+            echo "IMAGE_TAG=${{ env.DOCKER_IMAGE }}:staging-${{ github.event.workflow_run.head_sha }}" >> $GITHUB_ENV
+            echo "RAILS_ENV=staging" >> $GITHUB_ENV
+          fi
+
+      - name: Send deployment started notification
+        uses: dawidd6/action-send-mail@v9
+        continue-on-error: true
+        with:
+          server_address: smtp-relay.brevo.com
+          server_port: 587
+          username: ${{ steps.bws_secrets.outputs.brevo_smtp_username }}
+          password: ${{ steps.bws_secrets.outputs.brevo_smtp_key }}
+          subject: "[${{ github.event.repository.name }}] Deployment started to ${{ env.DEPLOY_ENV }}"
+          to: ${{ steps.bws_secrets.outputs.deploy_notification_email }}
+          from: Deployments <notifications@yourdomain.com>
+          body: |
+            Deployment STARTED for ${{ github.event.repository.name }}
+
+            Environment: ${{ env.DEPLOY_ENV }}
+            Branch: ${{ github.event.workflow_run.head_branch }}
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Author: ${{ github.event.workflow_run.actor.login }}
+
+            All CI checks passed.
+
+            View progress: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_REGISTRY_USER }}
+          password: ${{ steps.bws_secrets.outputs.registry_password }}
+
+      - name: Build and push Docker image (production)
+        if: github.event.workflow_run.head_branch == 'main'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=${{ env.DOCKER_IMAGE_NAME }}-production
+          cache-to: type=gha,mode=max,scope=${{ env.DOCKER_IMAGE_NAME }}-production
+          build-args: |
+            RAILS_ENV=production
+
+      - name: Build and push Docker image (staging)
+        if: github.event.workflow_run.head_branch == 'develop'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:staging
+            ${{ env.DOCKER_IMAGE }}:staging-${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=${{ env.DOCKER_IMAGE_NAME }}-staging
+          cache-to: type=gha,mode=max,scope=${{ env.DOCKER_IMAGE_NAME }}-staging
+          build-args: |
+            RAILS_ENV=staging
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ steps.bws_secrets.outputs.private_key }}
+
+      - name: Read server IP from deploy config
+        id: deploy_ip
+        run: |
+          IP=$(grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' ${{ env.DEPLOY_CONFIG }} | head -n 1 || true)
+          if [ -z "$IP" ]; then
+            echo "::error::Failed to extract server IP from ${{ env.DEPLOY_CONFIG }}."
+            exit 1
+          fi
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known hosts
+        run: |
+          IP="${{ steps.deploy_ip.outputs.ip }}"
+          if [ -z "$IP" ]; then
+            echo "::error::Server IP is empty; cannot add to known_hosts."
+            exit 1
+          fi
+          if ! ssh-keyscan -T 10 "$IP" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "::error::Failed to fetch SSH host key for $IP."
+            exit 1
+          fi
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: .ruby-version
+
+      - name: Install Kamal
+        run: gem install kamal --no-document
+
+      - name: Deploy
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+          KAMAL_REGISTRY_PASSWORD: ${{ steps.bws_secrets.outputs.registry_password }}
+        run: kamal deploy ${{ env.KAMAL_DESTINATION }}
+
+      - name: Send deployment succeeded notification
+        uses: dawidd6/action-send-mail@v9
+        continue-on-error: true
+        with:
+          server_address: smtp-relay.brevo.com
+          server_port: 587
+          username: ${{ steps.bws_secrets.outputs.brevo_smtp_username }}
+          password: ${{ steps.bws_secrets.outputs.brevo_smtp_key }}
+          subject: "[${{ github.event.repository.name }}] Deployment succeeded to ${{ env.DEPLOY_ENV }}"
+          to: ${{ steps.bws_secrets.outputs.deploy_notification_email }}
+          from: Deployments <notifications@yourdomain.com>
+          body: |
+            Deployment SUCCEEDED for ${{ github.event.repository.name }}
+
+            Environment: ${{ env.DEPLOY_ENV }}
+            Branch: ${{ github.event.workflow_run.head_branch }}
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Author: ${{ github.event.workflow_run.actor.login }}
+
+            View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  notify_deploy_failed:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: failure()
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            echo "name=production" >> $GITHUB_OUTPUT
+          else
+            echo "name=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+          sparse-checkout: .github/actions
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: bws_secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+          BWS_PREFIX=$(echo "${{ github.event.repository.name }}" | sed 's/-core$//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+
+          BREVO_SMTP_USERNAME=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "BREVO_SMTP_USERNAME") | .value')
+          if [ -z "$BREVO_SMTP_USERNAME" ]; then
+            echo "::error::BREVO_SMTP_USERNAME not found in BWS"
+            exit 1
+          fi
+          echo "brevo_smtp_username=$BREVO_SMTP_USERNAME" >> $GITHUB_OUTPUT
+
+          DEPLOY_NOTIFICATION_EMAIL=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "DEPLOY_NOTIFICATION_EMAIL") | .value')
+          if [ -z "$DEPLOY_NOTIFICATION_EMAIL" ]; then
+            echo "::error::DEPLOY_NOTIFICATION_EMAIL not found in BWS"
+            exit 1
+          fi
+          echo "deploy_notification_email=$DEPLOY_NOTIFICATION_EMAIL" >> $GITHUB_OUTPUT
+
+          BREVO_SMTP_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_BREVO_SMTP_KEY\") | .value")
+          if [ -z "$BREVO_SMTP_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_BREVO_SMTP_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$BREVO_SMTP_KEY"
+          echo "brevo_smtp_key=$BREVO_SMTP_KEY" >> $GITHUB_OUTPUT
+
+      - name: Send deployment failed notification
+        uses: dawidd6/action-send-mail@v9
+        continue-on-error: true
+        with:
+          server_address: smtp-relay.brevo.com
+          server_port: 587
+          username: ${{ steps.bws_secrets.outputs.brevo_smtp_username }}
+          password: ${{ steps.bws_secrets.outputs.brevo_smtp_key }}
+          subject: "[${{ github.event.repository.name }}] Deployment FAILED to ${{ steps.env.outputs.name }}"
+          to: ${{ steps.bws_secrets.outputs.deploy_notification_email }}
+          from: Deployments <notifications@yourdomain.com>
+          body: |
+            Deployment FAILED for ${{ github.event.repository.name }}
+
+            Environment: ${{ steps.env.outputs.name }}
+            Branch: ${{ github.event.workflow_run.head_branch }}
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Author: ${{ github.event.workflow_run.actor.login }}
+
+            The deployment process encountered an error.
+
+            View logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

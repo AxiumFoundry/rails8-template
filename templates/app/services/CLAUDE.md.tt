@@ -1,0 +1,23 @@
+# Services
+
+## What Exists
+
+### ApplicationService Base
+All services inheriting from `ApplicationService` follow this pattern:
+- Class method `.call(...)` instantiates and calls the service
+- Subclasses implement `perform` method
+- Result tracking via `@success`, `@error`, `@error_code`, `@message`
+
+## Conventions
+
+- Inherit from `ApplicationService` for standard result handling
+- Call services with `.call()`, never `.new().perform`
+- Services handle one responsibility; compose multiple services for complex workflows
+- Keep services stateless where possible
+- Use subdirectories for namespaced services
+
+## Related
+
+- [app/models/CLAUDE.md](../models/CLAUDE.md)
+- [app/controllers/CLAUDE.md](../controllers/CLAUDE.md)
+- [test/CLAUDE.md](../../test/CLAUDE.md)
