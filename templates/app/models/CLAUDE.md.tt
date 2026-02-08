@@ -1,0 +1,20 @@
+# Models
+
+## What Exists
+
+### Core
+- `User` - Devise-authenticated user model
+
+## Conventions
+
+- Fat models, skinny controllers
+- Use concerns for shared behavior
+- Use scopes for common queries
+- Use `broadcasts_refreshes` for real-time updates via Turbo
+- Validate at the model level, not the controller level
+
+## Related
+
+- [app/controllers/CLAUDE.md](../controllers/CLAUDE.md)
+- [app/services/CLAUDE.md](../services/CLAUDE.md)
+- [test/CLAUDE.md](../../test/CLAUDE.md)

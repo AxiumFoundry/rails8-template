@@ -1,0 +1,59 @@
+require "simplecov"
+SimpleCov.start "rails" do
+  enable_coverage :branch
+
+  add_filter "/test/"
+  add_filter "/config/"
+  add_filter "/vendor/"
+
+  add_group "Controllers", "app/controllers"
+  add_group "Models", "app/models"
+  add_group "Helpers", "app/helpers"
+  add_group "Mailers", "app/mailers"
+  add_group "Services", "app/services"
+  add_group "Jobs", "app/jobs"
+  add_group "Components", "app/components"
+end
+
+ENV["RAILS_ENV"] ||= "test"
+require_relative "../config/environment"
+require "rails/test_help"
+require "webmock/minitest"
+require "mocha/minitest"
+
+WebMock.disable_net_connect!(allow_localhost: true)
+
+module ActiveSupport
+  class TestCase
+    parallelize(workers: :number_of_processors)
+
+    parallelize_setup do |worker|
+      SimpleCov.command_name "#{SimpleCov.command_name}-#{worker}"
+    end
+
+    parallelize_teardown do |worker|
+      SimpleCov.result
+    end
+
+    include FactoryBot::Syntax::Methods
+    include ActiveJob::TestHelper
+  end
+end
+
+class ActionDispatch::IntegrationTest
+  include Devise::Test::IntegrationHelpers
+  include FactoryBot::Syntax::Methods
+end
+
+class ActionDispatch::SystemTestCase
+  include FactoryBot::Syntax::Methods
+  self.use_transactional_tests = false
+
+  parallelize_setup do |worker|
+    SimpleCov.command_name "#{SimpleCov.command_name}-#{worker}"
+  end
+
+  parallelize_teardown do |worker|
+    SimpleCov.result
+  end
+end

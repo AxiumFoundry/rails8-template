@@ -1,0 +1,111 @@
+# CLAUDE.md
+
+<%= app_name.titleize %> - Rails 8 application.
+
+- Rails 8.x, PostgreSQL, Minitest + Capybara, RuboCop
+- Server-side rendering only (no JSON/API responses)
+- Action Cable with `broadcasts_refreshes` for real-time updates
+- Solid Queue for background jobs
+- Stimulus + Turbo for frontend interactivity
+- Tailwind CSS for styling
+
+## Devcontainer Setup
+
+All commands run inside the devcontainer. From outside:
+
+```bash
+docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "<command>"
+```
+
+**Do NOT run rails/ruby commands directly on the host.** Ruby, mise, and BWS credentials are only available inside the container.
+
+If BWS credentials aren't loaded: `source /tmp/bws-env.sh && <command>`
+
+## Quick Commands
+
+```bash
+# Tests
+bin/rails test                                    # all tests
+bin/rails test test/models/user_test.rb           # single file
+bin/rails test test/models/user_test.rb:42        # single test by line
+
+# Linting
+bundle exec rubocop                               # all files
+bundle exec rubocop app/models/user.rb            # single file
+bundle exec rubocop -a                            # auto-correct
+
+# Server & DB
+bin/rails server                                  # start server
+bin/rails db:migrate                              # run migrations
+bin/rails console                                 # rails console
+```
+
+## Code Standards
+
+- No explanatory comments; code should be self-documenting through clear naming. Only comment non-obvious design decisions.
+- No over-engineering. Implement the simplest solution that works. No speculative abstractions.
+- No emojis in code, commits, or documentation.
+- Fat models, skinny controllers (max 5 lines per action).
+- Business logic goes in models, POROs, or service objects.
+- RESTful routing only - 7 standard actions, no custom member/collection routes:
+
+```ruby
+# good
+resources :items, only: [:index, :show, :edit, :update]
+
+# bad - custom actions violate RESTful conventions
+resources :items do
+  member { post :approve }
+end
+```
+
+- RuboCop custom cops in `.rubocop/cop/rails/` enforce: skinny controllers, strict RESTful routes, no metaprogramming (`define_method`, `send`), Turbo broadcast `_later` variants.
+
+## Git Workflow
+
+- NEVER push directly to main. Always create a new feature branch first, then create a PR.
+- When creating a PR, ensure the title and description accurately reflect the changes in THIS branch only.
+- Run the full test suite and confirm all tests pass before creating a PR.
+
+Claude hooks (`.claude/settings.json`) enforce quality on every edit:
+
+- **PreToolUse**: TDD check (test file must exist before implementation), `--no-verify` blocker
+- **PostToolUse**: Auto-runs tests, TDD validation, controller response checks, broadcast pattern checks, RuboCop
+
+Denied commands: `--no-verify`, `git push --force`, modifying `.git/hooks/`
+
+When checks fail: stop, report the failure to the user, ask for guidance. Never bypass. Never commit with failing tests.
+
+## TDD Workflow
+
+1. **RED** - Write a failing test first (hooks enforce this)
+2. **GREEN** - Implement minimal code to pass
+3. **REFACTOR** - Improve while keeping tests green
+
+See [test/CLAUDE.md](test/CLAUDE.md) for test conventions and patterns.
+
+## Key Models
+
+**Core**: User
+
+## Personal Preferences
+
+Create a `CLAUDE.local.md` file in the project root for personal preferences (editor settings, debugging habits, etc.). This file is gitignored. See [CLAUDE.local.md.example](CLAUDE.local.md.example) for a template.
+
+## Component Documentation
+
+- [app/models/CLAUDE.md](app/models/CLAUDE.md) - Models, concerns, domain groupings
+- [app/controllers/CLAUDE.md](app/controllers/CLAUDE.md) - Controllers by namespace, routing conventions
+- [app/services/CLAUDE.md](app/services/CLAUDE.md) - Service objects and patterns
+- [app/helpers/CLAUDE.md](app/helpers/CLAUDE.md) - View helpers
+- [app/javascript/controllers/CLAUDE.md](app/javascript/controllers/CLAUDE.md) - Stimulus controllers
+- [app/views/CLAUDE.md](app/views/CLAUDE.md) - Views, layouts, partials
+- [test/CLAUDE.md](test/CLAUDE.md) - Test conventions and patterns
+
+## Resources
+
+- [Rails Guides](https://guides.rubyonrails.org)
+- [Minitest Documentation](https://github.com/seattlerb/minitest)
+- [RuboCop](https://github.com/rubocop/rubocop)
+- [Turbo Handbook](https://turbo.hotwired.dev/handbook/introduction)
+- [Stimulus Reference](https://stimulus.hotwired.dev/reference/controllers)

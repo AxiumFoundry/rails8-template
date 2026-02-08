@@ -1,0 +1,13 @@
+# Helpers
+
+## Conventions
+
+- Keep helpers focused on view-layer formatting
+- Use helpers for repeated view logic (formatting dates, currencies, status badges)
+- Avoid business logic in helpers - that belongs in models or services
+- Prefer ViewComponent for complex reusable UI elements
+
+## Related
+
+- [app/views/CLAUDE.md](../views/CLAUDE.md)
+- [app/components/CLAUDE.md](../components/CLAUDE.md)

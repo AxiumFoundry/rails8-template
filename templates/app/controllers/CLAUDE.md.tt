@@ -1,0 +1,29 @@
+# Controllers
+
+## Conventions
+
+- Max 5 lines per action (enforced by RuboCop)
+- RESTful actions only: index, show, new, create, edit, update, destroy
+- No JSON/API responses - HTML and Turbo Streams only
+- Use `respond_to` with `format.html` and `format.turbo_stream`
+- Delegate business logic to models or service objects
+- Use `before_action` for shared setup (set_*, find_*, authenticate_*)
+- Private methods for params filtering (*_params)
+
+## Routing
+
+```ruby
+# All routes must be within resources/resource blocks
+resources :items, only: [:index, :show, :new, :create, :edit, :update, :destroy]
+
+# Nested resources for relationships
+resources :users do
+  resources :bookings, only: [:index, :show]
+end
+```
+
+## Related
+
+- [app/models/CLAUDE.md](../models/CLAUDE.md)
+- [app/services/CLAUDE.md](../services/CLAUDE.md)
+- [app/views/CLAUDE.md](../views/CLAUDE.md)

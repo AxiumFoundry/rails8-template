@@ -1,0 +1,70 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  <%% if ENV["DB_HOST"] %>
+  host: <%%= ENV["DB_HOST"] %>
+  username: postgres
+  password: postgres
+  <%% end %>
+
+development:
+  primary:
+    <<: *default
+    database: <%= app_name %>_development
+  cache:
+    <<: *default
+    database: <%= app_name %>_development_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *default
+    database: <%= app_name %>_development_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *default
+    database: <%= app_name %>_development_cable
+    migrations_paths: db/cable_migrate
+
+test:
+  <<: *default
+  database: <%= app_name %>_test<%%= ENV["TEST_ENV_NUMBER"] %>
+
+staging:
+  primary: &primary_staging
+    <<: *default
+    host: <%= app_name %>-db
+    database: <%= app_name %>_staging
+    username: <%= app_name %>
+    password: <%%= ENV["POSTGRES_PASSWORD"] %>
+  cache:
+    <<: *primary_staging
+    database: <%= app_name %>_staging_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_staging
+    database: <%= app_name %>_staging_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_staging
+    database: <%= app_name %>_staging_cable
+    migrations_paths: db/cable_migrate
+
+production:
+  primary: &primary_production
+    <<: *default
+    host: <%= app_name %>-db
+    database: <%= app_name %>_production
+    username: <%= app_name %>
+    password: <%%= ENV["POSTGRES_PASSWORD"] %>
+  cache:
+    <<: *primary_production
+    database: <%= app_name %>_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: <%= app_name %>_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production
+    database: <%= app_name %>_production_cable
+    migrations_paths: db/cable_migrate

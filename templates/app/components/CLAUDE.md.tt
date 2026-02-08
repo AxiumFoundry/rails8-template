@@ -1,0 +1,18 @@
+# Components
+
+## What Exists
+
+### ApplicationComponent Base
+All components inherit from `ApplicationComponent` (which inherits from `ViewComponent::Base`).
+
+## Conventions
+
+- One component per file in `app/components/`
+- Component templates live alongside the Ruby class
+- Use `test/components/previews/` for component previews
+- Keep components focused on presentation logic
+
+## Related
+
+- [app/views/CLAUDE.md](../views/CLAUDE.md)
+- [app/helpers/CLAUDE.md](../helpers/CLAUDE.md)

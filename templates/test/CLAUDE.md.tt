@@ -1,0 +1,82 @@
+# Tests
+
+## Running Tests
+
+From outside the devcontainer:
+```bash
+docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "bin/rails test"
+docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "bin/rails test test/models/user_test.rb"
+docker exec -u vscode -w /workspaces/<%= app_name %> <%= container_name %> bash -ic "bin/rails test test/models/user_test.rb:42"
+```
+
+Inside the devcontainer:
+```bash
+bin/rails test
+bin/rails test test/models/user_test.rb
+bin/rails test test/models/user_test.rb:42
+```
+
+## Conventions
+
+### General
+- Minitest + Capybara (not RSpec)
+- Write tests before implementation (TDD enforced by hooks)
+- One assertion per test method when practical
+- Descriptive test names: `test "user with no email is invalid"`
+
+### Model Tests
+```ruby
+class UserTest < ActiveSupport::TestCase
+  test "validates presence of email" do
+    user = build(:user, email: nil)
+    assert_not user.valid?
+    assert_includes user.errors[:email], "can't be blank"
+  end
+end
+```
+
+### Controller Tests
+```ruby
+class UsersControllerTest < ActionDispatch::IntegrationTest
+  test "index returns success" do
+    get users_url
+    assert_response :success
+  end
+end
+```
+
+### System Tests
+```ruby
+class SignUpFlowTest < ApplicationSystemTestCase
+  test "user can sign up" do
+    visit new_user_registration_path
+    fill_in "Email", with: "test@example.com"
+    fill_in "Password", with: "password123"
+    fill_in "Password confirmation", with: "password123"
+    click_on "Sign up"
+    assert_text "Welcome"
+  end
+end
+```
+
+### Service Tests
+```ruby
+class MyServiceTest < ActiveSupport::TestCase
+  test "performs successfully" do
+    result = MyService.call(param: "value")
+    assert result.success?
+  end
+end
+```
+
+### What to Avoid
+- Don't test framework behavior (Rails validations themselves work; test your validation rules)
+- Don't test private methods directly
+- Don't use `sleep` in tests; use Capybara's built-in waiting
+- Don't create test data manually when a factory exists
+
+## Related
+
+- [app/models/CLAUDE.md](../app/models/CLAUDE.md)
+- [app/controllers/CLAUDE.md](../app/controllers/CLAUDE.md)
+- [app/services/CLAUDE.md](../app/services/CLAUDE.md)

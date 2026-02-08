@@ -1,0 +1,400 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ci-${{ github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Scan for common Rails security vulnerabilities using static analysis
+        run: bin/brakeman --no-pager
+
+      - name: Scan for known security vulnerabilities in gems used
+        run: bin/bundler-audit
+
+      - name: Scan for security vulnerabilities in JavaScript dependencies
+        run: bin/importmap audit
+
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      RUBOCOP_CACHE_ROOT: tmp/rubocop
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Prepare RuboCop cache
+        uses: actions/cache@v5
+        env:
+          DEPENDENCIES_HASH: ${{ hashFiles('.ruby-version', '**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
+        with:
+          path: ${{ env.RUBOCOP_CACHE_ROOT }}
+          key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
+          restore-keys: |
+            rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
+
+      - name: Lint code for consistent style
+        run: bin/rubocop -f github
+
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Install packages
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential git libpq-dev libyaml-dev pkg-config libvips42
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: bws_secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+          BWS_PREFIX=$(echo "${{ github.event.repository.name }}" | sed 's/-core$//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+
+          RAILS_MASTER_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_RAILS_MASTER_KEY\") | .value")
+          if [ -z "$RAILS_MASTER_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_RAILS_MASTER_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$RAILS_MASTER_KEY"
+          echo "rails_master_key=$RAILS_MASTER_KEY" >> $GITHUB_OUTPUT
+
+          ARE_PRIMARY_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY\") | .value")
+          if [ -z "$ARE_PRIMARY_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_PRIMARY_KEY"
+          echo "are_primary_key=$ARE_PRIMARY_KEY" >> $GITHUB_OUTPUT
+
+          ARE_DETERMINISTIC_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY\") | .value")
+          if [ -z "$ARE_DETERMINISTIC_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_DETERMINISTIC_KEY"
+          echo "are_deterministic_key=$ARE_DETERMINISTIC_KEY" >> $GITHUB_OUTPUT
+
+          ARE_DERIVATION_SALT=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT\") | .value")
+          if [ -z "$ARE_DERIVATION_SALT" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_DERIVATION_SALT"
+          echo "are_derivation_salt=$ARE_DERIVATION_SALT" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          RAILS_MASTER_KEY: ${{ steps.bws_secrets.outputs.rails_master_key }}
+          ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: ${{ steps.bws_secrets.outputs.are_primary_key }}
+          ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: ${{ steps.bws_secrets.outputs.are_deterministic_key }}
+          ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${{ steps.bws_secrets.outputs.are_derivation_salt }}
+        run: bin/rails db:create db:migrate test
+
+  system-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Install packages
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential git libpq-dev libyaml-dev pkg-config google-chrome-stable libvips imagemagick
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: bws_secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+          BWS_PREFIX=$(echo "${{ github.event.repository.name }}" | sed 's/-core$//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+
+          RAILS_MASTER_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_RAILS_MASTER_KEY\") | .value")
+          if [ -z "$RAILS_MASTER_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_RAILS_MASTER_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$RAILS_MASTER_KEY"
+          echo "rails_master_key=$RAILS_MASTER_KEY" >> $GITHUB_OUTPUT
+
+          ARE_PRIMARY_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY\") | .value")
+          if [ -z "$ARE_PRIMARY_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_PRIMARY_KEY"
+          echo "are_primary_key=$ARE_PRIMARY_KEY" >> $GITHUB_OUTPUT
+
+          ARE_DETERMINISTIC_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY\") | .value")
+          if [ -z "$ARE_DETERMINISTIC_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_DETERMINISTIC_KEY"
+          echo "are_deterministic_key=$ARE_DETERMINISTIC_KEY" >> $GITHUB_OUTPUT
+
+          ARE_DERIVATION_SALT=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT\") | .value")
+          if [ -z "$ARE_DERIVATION_SALT" ]; then
+            echo "::error::${BWS_PREFIX}_ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$ARE_DERIVATION_SALT"
+          echo "are_derivation_salt=$ARE_DERIVATION_SALT" >> $GITHUB_OUTPUT
+
+      - name: Run system tests
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+          RAILS_MASTER_KEY: ${{ steps.bws_secrets.outputs.rails_master_key }}
+          ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: ${{ steps.bws_secrets.outputs.are_primary_key }}
+          ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: ${{ steps.bws_secrets.outputs.are_deterministic_key }}
+          ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${{ steps.bws_secrets.outputs.are_derivation_salt }}
+        run: bin/rails db:create db:migrate test:system
+
+      - name: Keep screenshots from failed system tests
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshots
+          path: ${{ github.workspace }}/tmp/screenshots
+          if-no-files-found: ignore
+
+  autofix_lint:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: always() && needs.lint.result == 'failure' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: autofix-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Verify RuboCop fails
+        id: verify
+        run: |
+          if bundle exec rubocop --format simple > /dev/null 2>&1; then
+            echo "rubocop_failed=false" >> $GITHUB_OUTPUT
+          else
+            echo "rubocop_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Node.js
+        if: steps.verify.outputs.rubocop_failed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Claude Code
+        if: steps.verify.outputs.rubocop_failed == 'true'
+        run: npm install -g @anthropic-ai/claude-code@latest
+
+      - name: Auto-fix RuboCop violations
+        if: steps.verify.outputs.rubocop_failed == 'true'
+        timeout-minutes: 15
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "Run 'bundle exec rubocop -a' to auto-correct what it can. Then run 'bundle exec rubocop' to check for remaining violations. For any remaining offenses, read the failing files and fix them manually. Do not add explanatory comments. Only add comments for non-obvious design decisions if absolutely necessary. Run 'bundle exec rubocop' again to confirm all violations are resolved." \
+            --allowedTools "Edit,Read,Bash(bundle exec rubocop*),Glob,Grep"
+
+      - name: Verify RuboCop passes after auto-fix
+        if: steps.verify.outputs.rubocop_failed == 'true'
+        run: bundle exec rubocop --format simple
+
+      - name: Commit and push fixes
+        if: steps.verify.outputs.rubocop_failed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git add -A
+            git commit -m "Auto-fix RuboCop violations
+
+          Co-Authored-By: Claude Code <noreply@anthropic.com>"
+            git push
+          fi
+
+  notify_checks_failed:
+    runs-on: ubuntu-latest
+    needs: [scan, lint, test, system-test]
+    if: failure() && github.event_name == 'push'
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "name=production" >> $GITHUB_OUTPUT
+          else
+            echo "name=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine failed jobs
+        id: failed_jobs
+        run: |
+          FAILED=""
+          if [[ "${{ needs.scan.result }}" == "failure" ]]; then
+            FAILED="$FAILED\n- Security scan (Brakeman / bundler-audit / importmap audit)"
+          fi
+          if [[ "${{ needs.lint.result }}" == "failure" ]]; then
+            FAILED="$FAILED\n- RuboCop linting"
+          fi
+          if [[ "${{ needs.test.result }}" == "failure" ]]; then
+            FAILED="$FAILED\n- Test suite"
+          fi
+          if [[ "${{ needs.system-test.result }}" == "failure" ]]; then
+            FAILED="$FAILED\n- System tests"
+          fi
+          echo "jobs<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$FAILED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: .github/actions
+
+      - name: Setup BWS CLI
+        uses: ./.github/actions/setup-bws
+
+      - name: Fetch secrets from BWS
+        id: secrets
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+        run: |
+          BWS_JSON=$(bws secret list --output json)
+          BWS_PREFIX=$(echo "${{ github.event.repository.name }}" | sed 's/-core$//' | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+
+          BREVO_SMTP_USERNAME=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "BREVO_SMTP_USERNAME") | .value')
+          if [ -z "$BREVO_SMTP_USERNAME" ]; then
+            echo "::error::BREVO_SMTP_USERNAME not found in BWS"
+            exit 1
+          fi
+          echo "brevo_smtp_username=$BREVO_SMTP_USERNAME" >> $GITHUB_OUTPUT
+
+          DEPLOY_NOTIFICATION_EMAIL=$(echo "$BWS_JSON" | jq -r '.[] | select(.key == "DEPLOY_NOTIFICATION_EMAIL") | .value')
+          if [ -z "$DEPLOY_NOTIFICATION_EMAIL" ]; then
+            echo "::error::DEPLOY_NOTIFICATION_EMAIL not found in BWS"
+            exit 1
+          fi
+          echo "deploy_notification_email=$DEPLOY_NOTIFICATION_EMAIL" >> $GITHUB_OUTPUT
+
+          BREVO_SMTP_KEY=$(echo "$BWS_JSON" | jq -r ".[] | select(.key == \"${BWS_PREFIX}_BREVO_SMTP_KEY\") | .value")
+          if [ -z "$BREVO_SMTP_KEY" ]; then
+            echo "::error::${BWS_PREFIX}_BREVO_SMTP_KEY not found in BWS"
+            exit 1
+          fi
+          echo "::add-mask::$BREVO_SMTP_KEY"
+          echo "brevo_smtp_key=$BREVO_SMTP_KEY" >> $GITHUB_OUTPUT
+
+      - name: Send failure notification
+        uses: dawidd6/action-send-mail@v9
+        continue-on-error: true
+        with:
+          server_address: smtp-relay.brevo.com
+          server_port: 587
+          username: ${{ steps.secrets.outputs.brevo_smtp_username }}
+          password: ${{ steps.secrets.outputs.brevo_smtp_key }}
+          subject: "[${{ github.event.repository.name }}] CI checks failed on ${{ github.ref_name }}"
+          to: ${{ steps.secrets.outputs.deploy_notification_email }}
+          from: Deployments <notifications@yourdomain.com>
+          body: |
+            CI checks FAILED for ${{ github.event.repository.name }}
+
+            Environment: ${{ steps.env.outputs.name }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Message: ${{ github.event.head_commit.message }}
+
+            Failed checks:${{ steps.failed_jobs.outputs.jobs }}
+
+            View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Deployment has been skipped.

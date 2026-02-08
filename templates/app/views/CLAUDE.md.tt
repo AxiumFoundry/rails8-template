@@ -1,0 +1,20 @@
+# Views
+
+## Conventions
+
+- Tailwind CSS for all styling
+- Turbo Frames for partial page updates
+- Turbo Streams for real-time broadcasts
+- Partials for reusable view components (prefix with `_`)
+- Use `form_with` (never `form_for` or `form_tag`) - Turbo-compatible by default
+- Never use `local: true` on forms (disables Turbo)
+
+## Layouts
+
+- `application.html.erb` - Main layout with flash messages and navigation
+
+## Related
+
+- [app/helpers/CLAUDE.md](../helpers/CLAUDE.md)
+- [app/javascript/controllers/CLAUDE.md](../javascript/controllers/CLAUDE.md)
+- [app/components/CLAUDE.md](../components/CLAUDE.md)

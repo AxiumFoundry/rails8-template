@@ -1,0 +1,19 @@
+name: Setup BWS CLI
+description: Install Bitwarden Secrets Manager CLI
+
+inputs:
+  version:
+    description: BWS CLI version to install
+    default: "1.0.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Bitwarden Secrets Manager CLI
+      shell: bash
+      run: |
+        BWS_VERSION="${{ inputs.version }}"
+        BWS_ZIP="bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
+        curl -sLO "https://github.com/bitwarden/sdk/releases/download/bws-v${BWS_VERSION}/${BWS_ZIP}"
+        unzip "${BWS_ZIP}"
+        sudo install -m 0755 bws /usr/local/bin/bws
