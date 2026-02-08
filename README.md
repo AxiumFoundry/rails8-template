@@ -5,13 +5,13 @@ Rails 8 application template with CI/CD, Kamal deployment, devcontainer, Claude 
 ## Usage
 
 ```bash
-rails new myapp -d postgresql -m /path/to/template.rb
+rails new my_cool_app -d postgresql -m /path/to/template.rb
 ```
 
 Or from GitHub:
 
 ```bash
-rails new myapp -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/rails8-template/main/template.rb
+rails new my_cool_app -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/rails8-template/main/template.rb
 ```
 
 ## What's Included
