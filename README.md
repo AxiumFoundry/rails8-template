@@ -55,17 +55,41 @@ rails new myapp -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/
 
 ## Dynamic Values
 
-When you run `rails new my_cool_app -d postgresql -m template.rb`, Rails sets `app_name` to `my_cool_app`. The template derives all project-specific values from this:
+You don't need to find-and-replace anything after generation. The template automatically inserts your project name into every config file, workflow, and script.
 
-| Value | Derivation | Example (`my_cool_app`) |
+The name you pass to `rails new` drives everything:
+
+```bash
+rails new my_cool_app -d postgresql -m template.rb
+#          ^^^^^^^^^^^
+#          This becomes `app_name` -- every value below is derived from it.
+```
+
+| Where it shows up | What gets inserted | Example |
 |---|---|---|
-| BWS prefix | Strip `_core` suffix, replace `-` with `_`, upcase | `MY_COOL_APP` |
-| Docker image | Replace `-` with `_` | `my_cool_app` |
-| Container name | `{app_name}-rails-app-1` | `my_cool_app-rails-app-1` |
-| Database | `{app_name}_development` | `my_cool_app_development` |
-| BWS secret keys | `{BWS_PREFIX}_SECRET_NAME` | `MY_COOL_APP_RAILS_MASTER_KEY` |
+| Database names | `{app_name}_development`, `_test`, etc. | `my_cool_app_development` |
+| Docker image name | `{app_name}` (hyphens become underscores) | `my_cool_app` |
+| Devcontainer service | `{app_name}` in `compose.yaml`, `devcontainer.json` | `my_cool_app` |
+| Container name | `{app_name}-rails-app-1` (used in pre-commit hook, CLAUDE.md) | `my_cool_app-rails-app-1` |
+| Kamal deploy config | `service: {app_name}` in `config/deploy.yml` | `service: my_cool_app` |
+| BWS secret prefix | `{APP_NAME}` uppercased (see below) | `MY_COOL_APP` |
 
-The BWS prefix is used across `.kamal/secrets`, `.devcontainer/setup-bws-env.sh`, CI/CD workflows, and `.github/BWS_SECRETS.md`. See [templates/.github/BWS_SECRETS.md.tt](templates/.github/BWS_SECRETS.md.tt) for the full list of expected secrets.
+### BWS prefix
+
+Bitwarden Secrets Manager keys are prefixed with your project name so multiple projects can share one BWS organization. The prefix is derived by uppercasing `app_name` and replacing hyphens with underscores. If your app name ends in `_core`, that suffix is stripped first (e.g. `ride_mentor_core` becomes `RIDE_MENTOR`).
+
+```
+my_cool_app      -> MY_COOL_APP
+my-cool-app      -> MY_COOL_APP
+ride_mentor_core -> RIDE_MENTOR
+```
+
+This prefix appears in:
+- **`.kamal/secrets`** - `KAMAL secrets extract MY_COOL_APP_RAILS_MASTER_KEY`
+- **`.devcontainer/setup-bws-env.sh`** - maps BWS secrets to environment variables
+- **`.github/BWS_SECRETS.md`** - documents every secret your CI/CD needs
+
+See [templates/.github/BWS_SECRETS.md.tt](templates/.github/BWS_SECRETS.md.tt) for the full list of required secrets and which workflows use them.
 
 ## Post-Generation Setup
 
