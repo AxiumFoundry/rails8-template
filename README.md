@@ -76,12 +76,12 @@ rails new my_cool_app -d postgresql -m template.rb
 
 ### BWS prefix
 
-Bitwarden Secrets Manager keys are prefixed with your project name so multiple projects can share one BWS organization. The prefix is derived by uppercasing `app_name` and replacing hyphens with underscores. If your app name ends in `_core`, that suffix is stripped first (e.g. `ride_mentor_core` becomes `RIDE_MENTOR`).
+Bitwarden Secrets Manager keys are prefixed with your project name so multiple projects can share one BWS organization. The prefix is derived by uppercasing `app_name` and replacing hyphens with underscores. If your app name ends in `_core`, that suffix is stripped first (e.g. `my_app_core` becomes `MY_APP`).
 
 ```
 my_cool_app      -> MY_COOL_APP
 my-cool-app      -> MY_COOL_APP
-ride_mentor_core -> RIDE_MENTOR
+my_app_core      -> MY_APP
 ```
 
 This prefix appears in:
