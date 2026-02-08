@@ -55,14 +55,17 @@ rails new myapp -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/
 
 ## Dynamic Values
 
-All project-specific values are derived from the `app_name`:
+When you run `rails new my_cool_app -d postgresql -m template.rb`, Rails sets `app_name` to `my_cool_app`. The template derives all project-specific values from this:
 
-| Value | Example (`my_cool_app`) |
-|---|---|
-| BWS prefix | `MY_COOL_APP` |
-| Docker image | `my_cool_app` |
-| Container name | `my_cool_app-rails-app-1` |
-| Database | `my_cool_app_development` |
+| Value | Derivation | Example (`my_cool_app`) |
+|---|---|---|
+| BWS prefix | Strip `_core` suffix, replace `-` with `_`, upcase | `MY_COOL_APP` |
+| Docker image | Replace `-` with `_` | `my_cool_app` |
+| Container name | `{app_name}-rails-app-1` | `my_cool_app-rails-app-1` |
+| Database | `{app_name}_development` | `my_cool_app_development` |
+| BWS secret keys | `{BWS_PREFIX}_SECRET_NAME` | `MY_COOL_APP_RAILS_MASTER_KEY` |
+
+The BWS prefix is used across `.kamal/secrets`, `.devcontainer/setup-bws-env.sh`, CI/CD workflows, and `.github/BWS_SECRETS.md`. See [templates/.github/BWS_SECRETS.md.tt](templates/.github/BWS_SECRETS.md.tt) for the full list of expected secrets.
 
 ## Post-Generation Setup
 
