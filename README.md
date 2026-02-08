@@ -1,6 +1,6 @@
 # Rails 8 Application Template
 
-A production-ready Rails 8 application template with batteries included: CI/CD, Kamal deployment, devcontainer, Claude Code hooks, RuboCop custom cops, TDD workflow, and Bitwarden Secrets Manager integration.
+Rails 8 application template with CI/CD, Kamal deployment, devcontainer, Claude Code hooks, RuboCop custom cops, TDD workflow, and Bitwarden Secrets Manager integration.
 
 ## Usage
 
@@ -8,10 +8,10 @@ A production-ready Rails 8 application template with batteries included: CI/CD, 
 rails new myapp -d postgresql -m /path/to/template.rb
 ```
 
-Or from a remote URL:
+Or from GitHub:
 
 ```bash
-rails new myapp -d postgresql -m https://raw.githubusercontent.com/YOUR_USER/docker-rails7-tailwind-pgsql/main/template.rb
+rails new myapp -d postgresql -m https://raw.githubusercontent.com/AxiumFoundry/rails8-template/main/template.rb
 ```
 
 ## What's Included
@@ -19,17 +19,16 @@ rails new myapp -d postgresql -m https://raw.githubusercontent.com/YOUR_USER/doc
 ### Stack
 - **Rails 8.x** with PostgreSQL
 - **Solid Stack** - Solid Cache, Solid Queue, Solid Cable (multi-database)
-- **Hotwire** - Turbo + Stimulus for frontend interactivity
-- **Tailwind CSS** for styling
+- **Hotwire** - Turbo + Stimulus
+- **Tailwind CSS**
 - **Devise** for authentication
 - **ViewComponent** for reusable UI components
-- **Kamal** for Docker-based deployment
+- **Kamal** for deployment
 
 ### Infrastructure
-- **Devcontainer** - VS Code devcontainer with PostgreSQL, Selenium, BWS CLI, Claude Code
-- **CI/CD** - GitHub Actions with scan, lint, test, system-test, autofix (Claude Code), email notifications
-- **CD** - Automated deployment via Kamal on CI success (main -> production, develop -> staging)
-- **Kamal** - Production and staging deploy configs with Docker Hub registry
+- **Devcontainer** - PostgreSQL, Selenium, BWS CLI, Claude Code
+- **CI** - GitHub Actions: scan, lint, test, system-test, autofix (Claude Code), email notifications
+- **CD** - Kamal deploy on CI success (main -> production, develop -> staging)
 - **BWS** - Bitwarden Secrets Manager for all secrets (only `BWS_ACCESS_TOKEN` needed as GitHub secret)
 
 ### Code Quality
@@ -50,7 +49,7 @@ rails new myapp -d postgresql -m https://raw.githubusercontent.com/YOUR_USER/doc
 - **TDD workflow** enforced by Claude hooks
 
 ### CLAUDE.md Documentation
-- Root `CLAUDE.md` with full project conventions
+- Root `CLAUDE.md` with project conventions
 - 8 nested `CLAUDE.md` files for models, controllers, services, helpers, views, components, Stimulus, tests
 - `CLAUDE.local.md.example` for personal preferences
 
